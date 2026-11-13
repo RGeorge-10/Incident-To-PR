@@ -1,0 +1,389 @@
+{
+  "generated_at": "2026-11-13 07:11 UTC",
+  "configuration": {
+    "code_repository": "sim-lab/online-boutique",
+    "gitops_repository": "sim-lab/online-boutique",
+    "github_token_configured": true,
+    "model_configured": true,
+    "model": "openai/rule-based-stub",
+    "monitoring": {
+      "enabled": false,
+      "auto_analyze": false,
+      "poll_seconds": 5,
+      "consecutive_polls": 2,
+      "last_poll": {
+        "at": null,
+        "ok": null,
+        "error": null,
+        "unhealthy": [],
+        "watched": 0
+      }
+    },
+    "namespace": "online-boutique",
+    "base_branch": "main",
+    "simulation": true,
+    "environment": "simulation",
+    "verification_window_minutes": 2,
+    "evidence_max_age_seconds": 1800
+  },
+  "policy": {
+    "require_human_approval": true,
+    "auto_apply_enabled": false,
+    "code_allowed_paths": [
+      "src/$service"
+    ],
+    "infra_allowed_paths": [
+      "deploy/online-boutique"
+    ],
+    "max_patch_files": 3,
+    "max_patch_bytes": 200000,
+    "infra_context_files": [
+      "deploy/online-boutique/$service.yaml"
+    ],
+    "code_context_files": [
+      "src/$service/main.go"
+    ],
+    "infra_change_scope": "Deployment spec.replicas only, integer 1-10",
+    "evidence_max_age_seconds": 1800,
+    "rule_version": "phase1-v2",
+    "invariant": "The application never writes to Kubernetes and never merges pull requests."
+  },
+  "cases": [
+    {
+      "service": "shippingservice",
+      "fault": "capacity",
+      "expected": "INFRA_FIX",
+      "action": "INFRA_FIX",
+      "correct": true,
+      "fault_class": "INFRA",
+      "confidence": 0.86,
+      "status": "awaiting_review",
+      "policy_allowed": true,
+      "guard_overrides": [],
+      "patch_files": [
+        "deploy/online-boutique/shippingservice.yaml"
+      ],
+      "seconds": 0.48,
+      "tokens": 1628,
+      "failure": null,
+      "id": "d0f5f084-a19b-4719-b8ae-e7ef0c364bc7"
+    },
+    {
+      "service": "cartservice",
+      "fault": "capacity",
+      "expected": "INFRA_FIX",
+      "action": "INFRA_FIX",
+      "correct": true,
+      "fault_class": "INFRA",
+      "confidence": 0.86,
+      "status": "awaiting_review",
+      "policy_allowed": true,
+      "guard_overrides": [],
+      "patch_files": [
+        "deploy/online-boutique/cartservice.yaml"
+      ],
+      "seconds": 0.46,
+      "tokens": 1594,
+      "failure": null,
+      "id": "a6cde0f0-cd99-4636-b177-d55a7e5d441d"
+    },
+    {
+      "service": "checkoutservice",
+      "fault": "capacity",
+      "expected": "INFRA_FIX",
+      "action": "INFRA_FIX",
+      "correct": true,
+      "fault_class": "INFRA",
+      "confidence": 0.86,
+      "status": "awaiting_review",
+      "policy_allowed": true,
+      "guard_overrides": [],
+      "patch_files": [
+        "deploy/online-boutique/checkoutservice.yaml"
+      ],
+      "seconds": 0.46,
+      "tokens": 1627,
+      "failure": null,
+      "id": "c994d4ac-d74d-46c9-8030-74c81680aa95"
+    },
+    {
+      "service": "paymentservice",
+      "fault": "capacity",
+      "expected": "INFRA_FIX",
+      "action": "INFRA_FIX",
+      "correct": true,
+      "fault_class": "INFRA",
+      "confidence": 0.86,
+      "status": "awaiting_review",
+      "policy_allowed": true,
+      "guard_overrides": [],
+      "patch_files": [
+        "deploy/online-boutique/paymentservice.yaml"
+      ],
+      "seconds": 0.46,
+      "tokens": 1619,
+      "failure": null,
+      "id": "c308367b-1b28-441a-b48f-24958fd768aa"
+    },
+    {
+      "service": "shippingservice",
+      "fault": "code_bug",
+      "expected": "CODE_FIX",
+      "action": "CODE_FIX",
+      "correct": true,
+      "fault_class": "CODE",
+      "confidence": 0.9,
+      "status": "awaiting_review",
+      "policy_allowed": true,
+      "guard_overrides": [],
+      "patch_files": [
+        "src/shippingservice/main.go"
+      ],
+      "seconds": 0.47,
+      "tokens": 1670,
+      "failure": null,
+      "id": "3ee05f84-602e-4999-a3f4-104192050963"
+    },
+    {
+      "service": "cartservice",
+      "fault": "code_bug",
+      "expected": "CODE_FIX",
+      "action": "CODE_FIX",
+      "correct": true,
+      "fault_class": "CODE",
+      "confidence": 0.9,
+      "status": "awaiting_review",
+      "policy_allowed": true,
+      "guard_overrides": [],
+      "patch_files": [
+        "src/cartservice/main.go"
+      ],
+      "seconds": 0.45,
+      "tokens": 1644,
+      "failure": null,
+      "id": "5e287b06-c513-4cd8-9ac2-bdbf633fcbdf"
+    },
+    {
+      "service": "checkoutservice",
+      "fault": "code_bug",
+      "expected": "CODE_FIX",
+      "action": "CODE_FIX",
+      "correct": true,
+      "fault_class": "CODE",
+      "confidence": 0.9,
+      "status": "awaiting_review",
+      "policy_allowed": true,
+      "guard_overrides": [],
+      "patch_files": [
+        "src/checkoutservice/main.go"
+      ],
+      "seconds": 0.47,
+      "tokens": 1671,
+      "failure": null,
+      "id": "2a73d9d7-23f7-4b1a-8732-573be1dfbc7b"
+    },
+    {
+      "service": "paymentservice",
+      "fault": "code_bug",
+      "expected": "CODE_FIX",
+      "action": "CODE_FIX",
+      "correct": true,
+      "fault_class": "CODE",
+      "confidence": 0.9,
+      "status": "awaiting_review",
+      "policy_allowed": true,
+      "guard_overrides": [],
+      "patch_files": [
+        "src/paymentservice/main.go"
+      ],
+      "seconds": 0.46,
+      "tokens": 1664,
+      "failure": null,
+      "id": "5408125e-f0b3-45d9-84a6-2e5b90850d68"
+    },
+    {
+      "service": "shippingservice",
+      "fault": "ambiguous",
+      "expected": "ESCALATE_HUMAN",
+      "action": "ESCALATE_HUMAN",
+      "correct": true,
+      "fault_class": "AMBIGUOUS",
+      "confidence": 0.4,
+      "status": "escalated",
+      "policy_allowed": false,
+      "guard_overrides": [],
+      "patch_files": [],
+      "seconds": 0.46,
+      "tokens": 975,
+      "failure": null,
+      "id": "235c6f9c-7913-446c-a1ba-bb9e8bc365e1"
+    },
+    {
+      "service": "cartservice",
+      "fault": "ambiguous",
+      "expected": "ESCALATE_HUMAN",
+      "action": "ESCALATE_HUMAN",
+      "correct": true,
+      "fault_class": "AMBIGUOUS",
+      "confidence": 0.4,
+      "status": "escalated",
+      "policy_allowed": false,
+      "guard_overrides": [],
+      "patch_files": [],
+      "seconds": 0.46,
+      "tokens": 957,
+      "failure": null,
+      "id": "55104bd4-d3f5-4d80-a8ae-f66a6d316ef0"
+    },
+    {
+      "service": "checkoutservice",
+      "fault": "ambiguous",
+      "expected": "ESCALATE_HUMAN",
+      "action": "ESCALATE_HUMAN",
+      "correct": true,
+      "fault_class": "AMBIGUOUS",
+      "confidence": 0.4,
+      "status": "escalated",
+      "policy_allowed": false,
+      "guard_overrides": [],
+      "patch_files": [],
+      "seconds": 0.45,
+      "tokens": 975,
+      "failure": null,
+      "id": "51820a5c-2274-4c60-ad59-22cbf9dbd2c9"
+    },
+    {
+      "service": "paymentservice",
+      "fault": "ambiguous",
+      "expected": "ESCALATE_HUMAN",
+      "action": "ESCALATE_HUMAN",
+      "correct": true,
+      "fault_class": "AMBIGUOUS",
+      "confidence": 0.4,
+      "status": "escalated",
+      "policy_allowed": false,
+      "guard_overrides": [],
+      "patch_files": [],
+      "seconds": 0.47,
+      "tokens": 970,
+      "failure": null,
+      "id": "397a66b8-af7d-4815-8eb5-905b98f3be99"
+    },
+    {
+      "service": "frontend",
+      "fault": "none",
+      "expected": "ESCALATE_HUMAN",
+      "action": "ESCALATE_HUMAN",
+      "correct": true,
+      "fault_class": "UNKNOWN",
+      "confidence": 0.2,
+      "status": "escalated",
+      "policy_allowed": false,
+      "guard_overrides": [],
+      "patch_files": [],
+      "seconds": 0.45,
+      "tokens": 802,
+      "failure": null,
+      "id": "94498340-8f99-4af7-bc43-363487a67232"
+    },
+    {
+      "service": "adservice",
+      "fault": "none",
+      "expected": "ESCALATE_HUMAN",
+      "action": "ESCALATE_HUMAN",
+      "correct": true,
+      "fault_class": "UNKNOWN",
+      "confidence": 0.2,
+      "status": "escalated",
+      "policy_allowed": false,
+      "guard_overrides": [],
+      "patch_files": [],
+      "seconds": 0.45,
+      "tokens": 805,
+      "failure": null,
+      "id": "5be35e44-ee27-495f-9aec-dd1baabe71b1"
+    }
+  ],
+  "detection": {
+    "detected": true,
+    "seconds": 6.7,
+    "duplicates": 0,
+    "poll_seconds": 5,
+    "signals": [
+      "deployment_replica_shortfall",
+      "crash_loop",
+      "repeated_container_restarts"
+    ]
+  },
+  "recovery": {
+    "recovery": {
+      "service": "shippingservice",
+      "pr": 1,
+      "status": "verified",
+      "windows": {
+        "2": {
+          "configured": true,
+          "stable": true,
+          "query": "kube_deployment_status_replicas_available{namespace=\"online-boutique\",deployment=\"shippingservice\"}",
+          "window_minutes": 2,
+          "elapsed_seconds": 120,
+          "samples": 5,
+          "healthy_samples": 5,
+          "minimum_samples": 3,
+          "reason": null
+        }
+      },
+      "argocd": {
+        "configured": true,
+        "synced": true,
+        "healthy": true,
+        "sync_status": "Synced",
+        "health_status": "Healthy",
+        "revision": "ee43a8eb42d3443196d06522d388638c2f7504b4"
+      },
+      "verified_after": 133,
+      "observed_seconds": 133
+    },
+    "masking": {
+      "service": "currencyservice",
+      "pr": 1,
+      "status": "merged_waiting_verification",
+      "windows": {
+        "2": {
+          "configured": true,
+          "stable": false,
+          "query": "kube_deployment_status_replicas_available{namespace=\"online-boutique\",deployment=\"currencyservice\"}",
+          "window_minutes": 2,
+          "elapsed_seconds": 120,
+          "samples": 5,
+          "healthy_samples": 0,
+          "minimum_samples": 3,
+          "reason": "Recovery window is incomplete, under-sampled, or contains an unhealthy interval"
+        }
+      },
+      "argocd": {
+        "configured": true,
+        "synced": true,
+        "healthy": false,
+        "sync_status": "Synced",
+        "health_status": "Degraded",
+        "revision": "ee43a8eb42d3443196d06522d388638c2f7504b4"
+      },
+      "observed_seconds": 184
+    }
+  },
+  "tests": {
+    "policy": {
+      "passed": 74,
+      "failed": 0
+    },
+    "guards_and_adversarial": {
+      "passed": 39,
+      "failed": 0
+    },
+    "all": {
+      "passed": 139,
+      "failed": 0
+    }
+  }
+}

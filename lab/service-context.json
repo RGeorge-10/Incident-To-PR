@@ -1,0 +1,75 @@
+{
+  "_comment": "Source files offered to the model for a CODE_FIX, per Online Boutique service. Verified against GoogleCloudPlatform/microservices-demo v0.10.7. redis-cart has no source in the repository. MAX_PATCH_FILES limits how many of these one proposal may change.",
+  "services": {
+    "adservice": {
+      "code": [
+        "src/adservice/src/main/java/hipstershop/AdService.java"
+      ]
+    },
+    "cartservice": {
+      "code": [
+        "src/cartservice/src/services/CartService.cs",
+        "src/cartservice/src/cartstore/RedisCartStore.cs",
+        "src/cartservice/src/Startup.cs",
+        "src/cartservice/src/Program.cs"
+      ]
+    },
+    "checkoutservice": {
+      "code": [
+        "src/checkoutservice/main.go",
+        "src/checkoutservice/money/money.go"
+      ]
+    },
+    "currencyservice": {
+      "code": [
+        "src/currencyservice/server.js"
+      ]
+    },
+    "emailservice": {
+      "code": [
+        "src/emailservice/email_server.py",
+        "src/emailservice/logger.py"
+      ]
+    },
+    "frontend": {
+      "code": [
+        "src/frontend/handlers.go",
+        "src/frontend/main.go",
+        "src/frontend/rpc.go",
+        "src/frontend/middleware.go"
+      ]
+    },
+    "loadgenerator": {
+      "code": [
+        "src/loadgenerator/locustfile.py"
+      ]
+    },
+    "paymentservice": {
+      "code": [
+        "src/paymentservice/server.js",
+        "src/paymentservice/charge.js",
+        "src/paymentservice/index.js"
+      ]
+    },
+    "productcatalogservice": {
+      "code": [
+        "src/productcatalogservice/server.go",
+        "src/productcatalogservice/product_catalog.go",
+        "src/productcatalogservice/catalog_loader.go"
+      ]
+    },
+    "recommendationservice": {
+      "code": [
+        "src/recommendationservice/recommendation_server.py",
+        "src/recommendationservice/logger.py"
+      ]
+    },
+    "shippingservice": {
+      "code": [
+        "src/shippingservice/main.go",
+        "src/shippingservice/quote.go",
+        "src/shippingservice/tracker.go"
+      ]
+    }
+  }
+}

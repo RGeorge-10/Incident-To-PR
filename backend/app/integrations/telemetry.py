@@ -4,6 +4,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import quote
 
+import asyncio
+import re
+import time
+
 import httpx
 from kubernetes import client, config
 from kubernetes.config.config_exception import ConfigException
@@ -11,25 +15,62 @@ from kubernetes.config.config_exception import ConfigException
 from ..config import settings
 
 
+INFRASTRUCTURE_PREFIXES = ("incident-to-pr", "prometheus", "grafana", "loki", "alloy")
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _label(value: str) -> str:
+    """Make an untrusted value safe to embed inside a PromQL/LogQL label matcher."""
+    return re.sub(r"[^A-Za-z0-9_.:-]", "", value)[:200]
+
+
+def _render(template: str, service: str) -> str:
+    return template.replace("$service", _label(service))
+
+
 async def prometheus_evidence(service: str) -> dict[str, Any]:
     if not settings.prometheus_url:
         return {"source": "prometheus", "configured": False, "items": [], "error": "PROMETHEUS_URL is not configured"}
-    query = settings.prometheus_query.replace("$service", service)
+    namespace, name = _label(settings.k8s_namespace), _label(service)
+    selector = f'namespace="{namespace}",deployment="{name}"'
+    pods = f'namespace="{namespace}",pod=~"{name}-.*"'
+    queries = {
+        "configured_query": _render(settings.prometheus_query, service),
+        "replicas_desired": f"kube_deployment_spec_replicas{{{selector}}}",
+        "replicas_available": f"kube_deployment_status_replicas_available{{{selector}}}",
+        "container_restarts_5m": f"sum by (pod) (increase(kube_pod_container_status_restarts_total{{{pods}}}[5m]))",
+        "containers_waiting": f"kube_pod_container_status_waiting_reason{{{pods}}} == 1",
+        "last_terminated_reason": f"kube_pod_container_status_last_terminated_reason{{{pods}}} == 1",
+    }
+    items: list[dict[str, Any]] = []
+    errors: list[str] = []
     try:
         async with httpx.AsyncClient(timeout=8) as http:
-            response = await http.get(f"{settings.prometheus_url}/api/v1/query", params={"query": query})
-            response.raise_for_status()
-            payload = response.json()
-        result = payload.get("data", {}).get("result", [])[:40]
-        return {"source": "prometheus", "configured": True, "query": query, "items": result}
+            for label, query in queries.items():
+                try:
+                    response = await http.get(f"{settings.prometheus_url}/api/v1/query", params={"query": query})
+                    response.raise_for_status()
+                    result = response.json().get("data", {}).get("result", [])[:15]
+                    items.append({"name": label, "query": query, "result": result})
+                except Exception as exc:
+                    errors.append(f"{label}: {type(exc).__name__}")
     except Exception as exc:
-        return {"source": "prometheus", "configured": True, "items": [], "error": f"query failed: {type(exc).__name__}"}
+        errors.append(type(exc).__name__)
+    evidence: dict[str, Any] = {"source": "prometheus", "configured": True, "collected_at": _now(), "items": items}
+    if not items:
+        evidence["error"] = "query failed: " + ", ".join(errors or ["no response"])
+    elif errors:
+        evidence["partial_errors"] = errors
+    return evidence
 
 
 async def loki_evidence(service: str) -> dict[str, Any]:
     if not settings.loki_url:
         return {"source": "loki", "configured": False, "items": [], "error": "LOKI_URL is not configured"}
-    query = settings.loki_query.replace("$service", service)
+    query = _render(settings.loki_query, service)
     end = datetime.now(timezone.utc)
     start = end - timedelta(minutes=10)
     try:
@@ -39,8 +80,15 @@ async def loki_evidence(service: str) -> dict[str, Any]:
                 "end": str(int(end.timestamp() * 1e9)), "limit": "50", "direction": "backward"})
             response.raise_for_status()
             payload = response.json()
-        result = payload.get("data", {}).get("result", [])[:20]
-        return {"source": "loki", "configured": True, "query": query, "items": result}
+        lines: list[dict[str, str]] = []
+        for stream in payload.get("data", {}).get("result", [])[:20]:
+            labels = stream.get("stream", {})
+            origin = labels.get("pod") or labels.get("container") or labels.get("app") or ""
+            for ts, line in stream.get("values", []):
+                lines.append({"ts": str(ts), "pod": str(origin), "line": str(line)[:600]})
+        lines.sort(key=lambda item: item["ts"], reverse=True)
+        return {"source": "loki", "configured": True, "collected_at": _now(), "query": query,
+                "window_minutes": 10, "items": lines[:50]}
     except Exception as exc:
         return {"source": "loki", "configured": True, "items": [], "error": f"query failed: {type(exc).__name__}"}
 
@@ -48,7 +96,7 @@ async def loki_evidence(service: str) -> dict[str, Any]:
 async def prometheus_health(service: str) -> dict[str, Any]:
     if not settings.prometheus_url:
         return {"configured": False, "healthy": False, "reason": "Prometheus is not configured"}
-    query = settings.prometheus_health_query.replace("$service", service)
+    query = _render(settings.prometheus_health_query, service)
     try:
         async with httpx.AsyncClient(timeout=8) as http:
             response = await http.get(f"{settings.prometheus_url}/api/v1/query", params={"query": query})
@@ -84,7 +132,7 @@ async def prometheus_unhealthy_deployments() -> dict[str, Any]:
                 responses[name] = response.json().get("data", {}).get("result", [])
         for row in responses["deployments"]:
             name = row.get("metric", {}).get("deployment")
-            if name and not name.startswith(("incident-to-pr", "prometheus", "grafana", "loki", "alloy")):
+            if name and not name.startswith(INFRASTRUCTURE_PREFIXES):
                 services.add(name)
         for row in responses["replica_shortfall"]:
             labels = row.get("metric", {})
@@ -101,9 +149,13 @@ async def prometheus_unhealthy_deployments() -> dict[str, Any]:
                 if service:
                     item = signals.setdefault(service, {"service": service, "namespace": namespace,
                         "missing_replicas": 0, "signals": []})
-                    item["signals"].append("crash_loop" if signal_name == "crash_loop" else "repeated_container_restarts")
-                    item.setdefault("affected_pods", []).append(pod)
-        return {"configured": True, "queries": queries, "items": list(signals.values())}
+                    signal = "crash_loop" if signal_name == "crash_loop" else "repeated_container_restarts"
+                    if signal not in item["signals"]:
+                        item["signals"].append(signal)
+                    if pod not in item.setdefault("affected_pods", []):
+                        item["affected_pods"].append(pod)
+        return {"configured": True, "queries": queries, "items": list(signals.values()),
+                "services": sorted(services)}
     except Exception as exc:
         return {"configured": True, "items": [], "error": f"monitor query failed: {type(exc).__name__}"}
 
@@ -115,7 +167,7 @@ async def prometheus_health_window(service: str, window_minutes: int, since: dat
     end = datetime.now(timezone.utc)
     start = max(end - timedelta(minutes=window_minutes), since or end - timedelta(minutes=window_minutes))
     elapsed = max(0.0, (end - start).total_seconds())
-    query = settings.prometheus_health_query.replace("$service", service)
+    query = _render(settings.prometheus_health_query, service)
     try:
         async with httpx.AsyncClient(timeout=12) as http:
             response = await http.get(f"{settings.prometheus_url}/api/v1/query_range", params={
@@ -139,21 +191,26 @@ async def prometheus_health_window(service: str, window_minutes: int, since: dat
                 "reason": f"range query failed: {type(exc).__name__}"}
 
 
-def kubernetes_evidence(service: str) -> dict[str, Any]:
+def _load_kube() -> None:
     try:
-        try:
-            config.load_incluster_config()
-        except ConfigException:
-            config.load_kube_config(context=settings.k8s_context or None)
+        config.load_incluster_config()
+    except ConfigException:
+        config.load_kube_config(context=settings.k8s_context or None)
+
+
+def kubernetes_evidence(service: str) -> dict[str, Any]:
+    """Blocking read-only Kubernetes query; call through `asyncio.to_thread`."""
+    try:
+        _load_kube()
         v1 = client.CoreV1Api()
         apps = client.AppsV1Api()
         namespace = settings.k8s_namespace
-        deployments = apps.list_namespaced_deployment(namespace=namespace, limit=100).items
+        deployments = apps.list_namespaced_deployment(namespace=namespace, limit=100, _request_timeout=6).items
         selected = [d for d in deployments if service.lower() in d.metadata.name.lower()]
-        pods = v1.list_namespaced_pod(namespace=namespace, limit=200).items
+        pods = v1.list_namespaced_pod(namespace=namespace, limit=200, _request_timeout=6).items
         selected_pods = [p for p in pods if service.lower() in p.metadata.name.lower()]
-        events = v1.list_namespaced_event(namespace=namespace, limit=100).items
-        return {"source": "kubernetes", "configured": True,
+        events = v1.list_namespaced_event(namespace=namespace, limit=100, _request_timeout=6).items
+        return {"source": "kubernetes", "configured": True, "collected_at": _now(),
                 "deployments": [{"name": d.metadata.name, "desired": d.spec.replicas,
                                  "ready": d.status.ready_replicas or 0,
                                  "available": d.status.available_replicas or 0} for d in selected],
@@ -164,20 +221,93 @@ def kubernetes_evidence(service: str) -> dict[str, Any]:
                 "events": [{"reason": e.reason, "message": (e.message or "")[:500],
                             "type": e.type, "object": e.involved_object.name}
                            for e in events if service.lower() in (e.involved_object.name or "").lower()][:30]}
+    except ConfigException:
+        return {"source": "kubernetes", "configured": False, "deployments": [], "pods": [], "events": [],
+                "error": "No kubeconfig/observer credential is available"}
     except Exception as exc:
         return {"source": "kubernetes", "configured": True, "deployments": [], "pods": [], "events": [],
                 "error": f"read failed: {type(exc).__name__}"}
 
 
-def integration_status() -> dict[str, Any]:
+async def prometheus_fleet() -> dict[str, Any]:
+    """Desired/available replicas for every workload deployment in the monitored namespace."""
+    if not settings.prometheus_url:
+        return {"configured": False, "deployments": [], "error": "Prometheus is not configured"}
+    namespace = _label(settings.k8s_namespace)
+    try:
+        rows: dict[str, list[dict[str, Any]]] = {}
+        async with httpx.AsyncClient(timeout=6) as http:
+            for key, metric in (("desired", "kube_deployment_spec_replicas"),
+                                ("available", "kube_deployment_status_replicas_available")):
+                response = await http.get(f"{settings.prometheus_url}/api/v1/query",
+                                          params={"query": f'{metric}{{namespace="{namespace}"}}'})
+                response.raise_for_status()
+                rows[key] = response.json().get("data", {}).get("result", [])
+        available = {row.get("metric", {}).get("deployment"): float(row["value"][1]) for row in rows["available"] if row.get("value")}
+        deployments = []
+        for row in rows["desired"]:
+            name = row.get("metric", {}).get("deployment")
+            if not name or name.startswith(INFRASTRUCTURE_PREFIXES):
+                continue
+            desired = float(row["value"][1])
+            ready = available.get(name, 0.0)
+            deployments.append({"name": name, "desired": desired, "available": ready, "healthy": ready >= desired})
+        return {"configured": True, "checked_at": _now(), "deployments": sorted(deployments, key=lambda d: d["name"])}
+    except Exception as exc:
+        return {"configured": True, "deployments": [], "error": f"fleet query failed: {type(exc).__name__}"}
+
+
+_probe_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+
+
+async def _http_ready(name: str, url: str, path: str) -> dict[str, Any]:
+    if not url:
+        return {"reachable": False}
+    cached = _probe_cache.get(name)
+    if cached and time.monotonic() - cached[0] < 10:
+        return cached[1]
+    try:
+        async with httpx.AsyncClient(timeout=3) as http:
+            response = await http.get(url + path)
+        result = {"reachable": response.status_code < 500}
+    except Exception as exc:
+        result = {"reachable": False, "reason": f"unreachable ({type(exc).__name__})"}
+    _probe_cache[name] = (time.monotonic(), result)
+    return result
+
+
+def _kubernetes_probe() -> dict[str, Any]:
+    try:
+        _load_kube()
+        client.AppsV1Api().list_namespaced_deployment(namespace=settings.k8s_namespace, limit=1, _request_timeout=3)
+        return {"configured": True, "reachable": True}
+    except ConfigException:
+        return {"configured": False, "reachable": False, "reason": "no kubeconfig / observer credential"}
+    except Exception as exc:
+        return {"configured": True, "reachable": False, "reason": f"unreachable ({type(exc).__name__})"}
+
+
+async def kubernetes_probe() -> dict[str, Any]:
+    cached = _probe_cache.get("kubernetes")
+    if cached and time.monotonic() - cached[0] < 15:
+        return cached[1]
+    result = await asyncio.to_thread(_kubernetes_probe)
+    _probe_cache["kubernetes"] = (time.monotonic(), result)
+    return result
+
+
+async def integration_status() -> dict[str, Any]:
+    prometheus, loki, kubernetes = await asyncio.gather(
+        _http_ready("prometheus", settings.prometheus_url, "/-/ready"),
+        _http_ready("loki", settings.loki_url, "/ready"), kubernetes_probe())
     return {
-        "kubernetes": {"configured": bool(settings.k8s_namespace), "mode": "read-only client"},
-        "prometheus": {"configured": bool(settings.prometheus_url), "url": settings.prometheus_url or None},
-        "loki": {"configured": bool(settings.loki_url), "url": settings.loki_url or None},
-        "github": {"configured": bool(settings.github_token and (settings.github_code_repository or settings.github_gitops_repository)),
-                   "code_repository": settings.github_code_repository or None,
-                   "gitops_repository": settings.github_gitops_repository or None},
-        "model": {"configured": bool(settings.llm_model and settings.llm_api_key), "model": settings.llm_model or None},
-        "argocd": {"configured": False, "mode": "read-only Kubernetes API", "application": settings.argocd_application},
-        "evaluator": {"configured": bool(settings.evaluator_url)},
+        "kubernetes": {**kubernetes, "mode": "read-only observer", "detail": settings.k8s_namespace},
+        "prometheus": {"configured": bool(settings.prometheus_url), **prometheus, "detail": settings.prometheus_url or None},
+        "loki": {"configured": bool(settings.loki_url), **loki, "detail": settings.loki_url or None},
+        "github": {"configured": bool(settings.github_token), "reachable": bool(settings.github_token)},
+        "model": {"configured": bool(settings.llm_model and settings.llm_api_key),
+                  "reachable": bool(settings.llm_model and settings.llm_api_key), "detail": settings.llm_model or None},
+        "argocd": {"configured": False, "reachable": False, "mode": "read-only", "detail": settings.argocd_application},
+        "evaluator": {"configured": bool(settings.evaluator_url), "reachable": bool(settings.evaluator_url),
+                      "detail": "hidden-test evaluator (not part of this prototype)"},
     }

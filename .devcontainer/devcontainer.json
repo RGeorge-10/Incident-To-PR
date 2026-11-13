@@ -1,0 +1,12 @@
+{
+  "name": "Incident-to-PR simulation lab",
+  "image": "mcr.microsoft.com/devcontainers/universal:2",
+  "postCreateCommand": "python3 -m venv .venv && .venv/bin/pip install -q -r backend/requirements-lock.txt && cd frontend && npm ci",
+  "postStartCommand": "mkdir -p .local && (nohup .venv/bin/python scripts/sim.py --fresh > .local/sim.log 2>&1 &)",
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": { "label": "Incident-to-PR dashboard", "onAutoForward": "openBrowser" },
+    "8000": { "label": "API (internal)", "onAutoForward": "ignore" },
+    "9900": { "label": "Simulator (internal)", "onAutoForward": "ignore" }
+  }
+}

@@ -10,16 +10,16 @@ if (-not (Test-Path (Join-Path $Root '.env'))) { throw 'Missing .env; run bootst
 $envFile = Get-Content (Join-Path $Root '.env') | Where-Object { $_ -match '^\s*[^#\s][^=]*=' }
 foreach ($line in $envFile) {
     $pair = $line -split '=', 2
-    if (-not [Environment]::GetEnvironmentVariable($pair[0])) { [Environment]::SetEnvironmentVariable($pair[0], $pair[1]) }
+    if (-not [Environment]::GetEnvironmentVariable($pair[0].Trim())) { [Environment]::SetEnvironmentVariable($pair[0].Trim(), $pair[1].Trim()) }
 }
 & (Join-Path $PSScriptRoot 'observer-kubeconfig.ps1')
 $env:KUBECONFIG = Join-Path $Root '.local\observer-kubeconfig.json'
 $env:K8S_CONTEXT = 'incident-to-pr-observer'
 $env:PROMETHEUS_URL = 'http://127.0.0.1:9090'
 $env:LOKI_URL = 'http://127.0.0.1:3100'
-$env:ARGOCD_URL = 'http://127.0.0.1:8081'
-$env:ARGOCD_INSECURE = 'true'
-$env:NEXT_PUBLIC_API_BASE_URL = 'http://127.0.0.1:8000'
+$env:ARGOCD_URL = 'https://127.0.0.1:8081'
+$env:ARGOCD_VERIFY_TLS = 'false'
+$env:API_PROXY_TARGET = 'http://127.0.0.1:8000'
 $pidDir = Join-Path $Root '.local'
 New-Item -ItemType Directory -Force $pidDir | Out-Null
 $backendDir = Join-Path $Root 'backend'

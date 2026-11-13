@@ -20,9 +20,14 @@ class ReviewRequest(BaseModel):
     comment: str = Field(default="", max_length=2000)
 
 
+class EscalateRequest(BaseModel):
+    reviewer: ShortText
+    comment: str = Field(default="", max_length=2000)
+
+
 class AlertmanagerPayload(BaseModel):
     receiver: str | None = None
-    status: str
+    status: str = "firing"
     alerts: list[dict[str, Any]] = Field(default_factory=list)
 
 
@@ -34,3 +39,8 @@ class RepositoryConfigUpdate(BaseModel):
 class MonitorConfigUpdate(BaseModel):
     enabled: bool
     auto_analyze: bool = False
+
+
+class SessionModelUpdate(BaseModel):
+    model: str = Field(min_length=3, max_length=120, pattern=r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.:/-]+$")
+    api_key: str = Field(min_length=8, max_length=400)

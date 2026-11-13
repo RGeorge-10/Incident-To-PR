@@ -19,3 +19,5 @@ data/*.sqlite3-*
 .local/
 *.pem
 *.key
+*.tsbuildinfo
+.pytest_cache/

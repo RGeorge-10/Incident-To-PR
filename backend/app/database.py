@@ -134,3 +134,41 @@ def list_events(incident_id: str) -> list[dict[str, Any]]:
         rows = db.execute("SELECT * FROM audit_events WHERE incident_id=? ORDER BY occurred_at", (incident_id,)).fetchall()
     return [{"id": r["id"], "incident_id": r["incident_id"], "occurred_at": r["occurred_at"],
              "actor": r["actor"], "event_type": r["event_type"], "details": json.loads(r["details"])} for r in rows]
+
+
+# Statuses in which an incident needs no further automated or human workflow step.
+TERMINAL_STATUSES = frozenset({"verified", "denied", "rejected", "failed", "escalated", "policy_denied"})
+
+
+def count_open_incidents() -> int:
+    marks = ",".join("?" for _ in TERMINAL_STATUSES)
+    with _connect() as db:
+        row = db.execute(f"SELECT COUNT(*) AS n FROM incidents WHERE status NOT IN ({marks})",
+                         tuple(TERMINAL_STATUSES)).fetchone()
+    return int(row["n"])
+
+
+def find_open_incident(service: str, source: str | None = None) -> dict[str, Any] | None:
+    """Return the newest non-terminal incident for a service (optionally from one source)."""
+    marks = ",".join("?" for _ in TERMINAL_STATUSES)
+    with _connect() as db:
+        rows = db.execute(f"SELECT payload FROM incidents WHERE service=? AND status NOT IN ({marks}) "
+                          "ORDER BY created_at DESC", (service, *TERMINAL_STATUSES)).fetchall()
+    for row in rows:
+        incident = json.loads(row["payload"])
+        if source is None or incident.get("source") == source:
+            return incident
+    return None
+
+
+def recover_interrupted_analyses() -> int:
+    """An analysis cannot survive a process restart; fail those incidents closed so they can be retried."""
+    with _connect() as db:
+        rows = db.execute("SELECT payload FROM incidents WHERE status='analyzing'").fetchall()
+    for row in rows:
+        incident = json.loads(row["payload"])
+        incident["status"] = "failed"
+        incident["failure"] = "Analysis was interrupted by an API restart. No change was proposed; run the analysis again."
+        save_incident(incident)
+        add_event(incident["id"], "system", "analysis.interrupted", {"reason": "api_restart"})
+    return len(rows)

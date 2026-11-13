@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import httpx
@@ -10,15 +11,20 @@ from kubernetes.config.config_exception import ConfigException
 from ..config import settings
 
 
-async def application_status() -> dict[str, Any]:
+def _read_application() -> dict[str, Any]:
     try:
-        try:
-            config.load_incluster_config()
-        except ConfigException:
-            config.load_kube_config(context=settings.k8s_context or None)
-        payload = client.CustomObjectsApi().get_namespaced_custom_object(
-            group="argoproj.io", version="v1alpha1", namespace="argocd",
-            plural="applications", name=settings.argocd_application)
+        config.load_incluster_config()
+    except ConfigException:
+        config.load_kube_config(context=settings.k8s_context or None)
+    return client.CustomObjectsApi().get_namespaced_custom_object(
+        group="argoproj.io", version="v1alpha1", namespace="argocd",
+        plural="applications", name=settings.argocd_application, _request_timeout=6)
+
+
+async def application_status() -> dict[str, Any]:
+    """Read-only Argo CD Application status: Kubernetes API first, Argo CD REST API as fallback."""
+    try:
+        payload = await asyncio.to_thread(_read_application)
         sync = payload.get("status", {}).get("sync", {}).get("status", "Unknown")
         health = payload.get("status", {}).get("health", {}).get("status", "Unknown")
         return {"configured": True, "synced": sync == "Synced", "healthy": health == "Healthy",
@@ -28,9 +34,7 @@ async def application_status() -> dict[str, Any]:
         if exc.status == 404:
             return {"configured": False, "synced": False, "healthy": False,
                     "reason": f"Argo CD application {settings.argocd_application!r} is not installed"}
-        if settings.argocd_url and settings.argocd_token:
-            pass
-        else:
+        if not (settings.argocd_url and settings.argocd_token):
             return {"configured": True, "synced": False, "healthy": False,
                     "reason": f"Read-only Kubernetes API query failed ({exc.status})"}
     except Exception as exc:
